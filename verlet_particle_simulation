@@ -1,0 +1,202 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.patches import Circle
+from matplotlib import animation
+
+
+from itertools import combinations
+
+
+class Particle:
+    def __init__(self, position_x, position_y,velocity_x,velocity_y,force_x,force_y,acceleration_x,acceleration_y,mass,radius=0.01):
+        self.position = np.array((position_x, position_y))
+        self.velocity = np.array((velocity_x, velocity_y))
+        self.force=np.array((force_x,force_y))
+        self.acceleration=np.array((acceleration_x,acceleration_y))
+        self.mass=mass
+        self.radius = radius
+        self.styles = {'edgecolor': 'b', 'fill': False}
+
+    # For convenience, map the components of the particle's position and
+    # velocity vector onto the attributes x, y, vx and vy.
+    @property
+    def position_x(self):
+        return self.position[0]
+    @position_x.setter
+    def position_x(self, new_x_pos):
+        self.position[0] = new_x_pos
+    @property
+    def position_y(self):
+        return self.position[1]
+    @position_y.setter
+    def position_y(self, new_y_pos):
+        self.position[1] = new_y_pos
+    @property
+    def velocity_x(self):
+        return self.velocity[0]
+    @velocity_x.setter
+    def velocity_x(self, new_x_vel):
+        self.velocity[0] = new_x_vel
+    @property
+    def velocity_y(self):
+        return self.velocity[1]
+    @velocity_y.setter
+    def vy(self, new_y_vel):
+        self.velocity[1] = new_y_vel
+
+    def check_collision(self, other):
+        return np.hypot(*(self.position - other.position)) < self.radius + other.radius
+
+    def draw(self, ax):
+        circle = Circle(xy=self.position, radius=self.radius, **self.styles)
+        ax.add_patch(circle)
+        return circle
+
+    def move(self, dt):
+        '''verlet algorithm'''
+        #For x position
+        self.position[0]= self.position[0] + self.velocity[0] * dt + (1 / 2) * (self.force[0] / self.mass) * dt ** 2
+        self.velocity[0] = self.velocity[0] + (1 / 2) * (self.force[0] / self.mass + self.force[0] / self.mass) * dt
+
+        #For y position
+        self.position[1] = self.position[1] + self.velocity[1] * dt + (1 / 2) * (self.force[1] / self.mass) * dt ** 2
+        self.velocity[1] = self.velocity[1] + (1 / 2) * (self.force[1] / self.mass + self.force[1] / self.mass) * dt
+
+
+        #wal collision condition
+        if self.position[0] - self.radius < 0:
+            self.position[0] = self.radius
+            self.velocity[0] = -self.velocity[0]
+            self.force[0]=-self.force[0]
+
+        if self.position[0] + self.radius > 1:
+            self.position[0] = 1-self.radius
+            self.velocity[0] = -self.velocity[0]
+            self.force[0] = -self.force[0]
+
+        if self.position[1] - self.radius < 0:
+            self.position[1] = self.radius
+            self.velocity[1] = -self.velocity[1]
+            self.force[1] = -self.force[1]
+
+        if self.position[1] + self.radius > 1:
+            self.position[1] = 1-self.radius
+            self.velocity[1] = -self.velocity[1]
+            self.force[1] = -self.force[1]
+
+
+class Spring_Bond:
+    def __init__(self,particle1,particle2,K):
+        self.particle1=particle1
+        self.particle2=particle2
+        self.K=K
+        self.distance=np.sqrt((particle1.x-particle2.x)**2+(particle1.y-particle2.y)**2)
+        self.U=(1/2)*self.K*self.distance
+
+
+
+
+
+class run_simulation:
+
+    def __init__(self, n_particles, radius=0.1):
+        self.init_particles(n_particles, radius)
+
+    def init_particles(self, n_particles, radius):
+        try:
+            iterator = iter(radius)
+            assert n_particles == len(radius)
+        except TypeError:
+            def gen(n_particles, radius):
+                for i in range(n_particles):
+                    yield radius
+            radius = gen(n_particles, radius)
+
+        self.n_partciles= n_particles
+        self.particles = []
+        for i, rad in enumerate(radius):
+
+            while True:
+
+                x, y = rad + (1 - 2*rad) * np.random.random(2)
+
+                vr = 0.1 * np.random.random() + 0.05
+                vphi = 2*np.pi * np.random.random()
+                vx, vy = 2 * np.cos(vphi), vr * np.sin(vphi)
+                particle = Particle(x, y, vx, vy, 0,0,0,0,1)
+
+                for p2 in self.particles:
+                    if p2.check_collision(particle):
+                        break
+                else:
+                    self.particles.append(particle)
+                    break
+
+    def handle_collisions(self):
+        def change_velocities(p1, p2):
+
+            m1, m2 = p1.radius**2, p2.radius**2
+            M = m1 + m2
+            r1, r2 = p1.position, p2.position
+            d = np.linalg.norm(r1 - r2)**2
+            v1, v2 = p1.velocity, p2.velocity
+            u1 = v1 - 2*m2 / M * np.dot(v1-v2, r1-r2) / d * (r1 - r2)
+            u2 = v2 - 2*m1 / M * np.dot(v2-v1, r2-r1) / d * (r2 - r1)
+            p1.velocity = u1
+            p2.velocity = u2
+
+
+        pairs = combinations(range(self.n_partciles), 2)
+        for i,j in pairs:
+            if self.particles[i].check_collision(self.particles[j]):
+                change_velocities(self.particles[i], self.particles[j])
+
+    def advance_animation(self, dt):
+        for i, p in enumerate(self.particles):
+            p.move(dt)
+            self.circles[i].center = p.position
+        self.handle_collisions()
+        return self.circles
+
+    def advance(self, dt):
+        for i, p in enumerate(self.particles):
+            p.move(dt)
+        self.handle_collisions()
+
+    def init(self):
+        self.circles = []
+        for particle in self.particles:
+            self.circles.append(particle.draw(self.ax))
+        return self.circles
+
+    def animate(self, i):
+        self.advance_animation(0.01)
+        return self.circles
+
+    def run_animation(self, save=False):
+
+        fig, self.ax = plt.subplots()
+        for s in ['top','bottom','left','right']:
+            self.ax.spines[s].set_linewidth(2)
+        self.ax.set_aspect('equal', 'box')
+        self.ax.set_xlim(0, 1)
+        self.ax.set_ylim(0, 1)
+        self.ax.xaxis.set_ticks([])
+        self.ax.yaxis.set_ticks([])
+        anim = animation.FuncAnimation(fig, self.animate, init_func=self.init,
+                               frames=800, interval=2, blit=True)
+        #anim.save('particles.gif', dpi=80, writer='imagemagick')
+
+        if save:
+            Writer = animation.writers['ffmpeg']
+            writer = Writer(fps=100, bitrate=1800)
+            anim.save('particles.mp4',  fps=30, extra_args=['-vcodec', 'libx264'])
+        else:
+            plt.show()
+
+#Run the simulation
+number_of_particles=10
+sim = run_simulation(number_of_particles)
+
+#If want to save as mp4 set True
+sim.run_animation(save=False)
